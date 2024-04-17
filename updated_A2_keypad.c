@@ -10,11 +10,11 @@
 #include <stdint.h>
 #include <main.h>
 
-int KEYPAD_PORT, NUM_OF_ROWS, COL_PORT, ROW_PORT;
+//int KEYPAD_PORT, NUM_OF_ROWS, COL_PORT, ROW_PORT;
 
 
-void Delay(int delay_time) {                      	// quick delay if key was not pressed for a long time
-	for(int delay = 0; delay < delay_time; delay++);
+/*void Delay(int delay_time) {                      	// quick delay if key was not pressed for a long time
+	for(int delay = 0; delay < delay_time; delay++); */
 
 
 void Keypad_Config(void)  {
@@ -45,7 +45,21 @@ GPIOB->MODER |= (GPIO_MODER_MODE6_0);
 GPIOB->MODER &= ~(GPIO_MODER_MODE10); // Clear bits
 GPIOB->MODER |= (GPIO_MODER_MODE10_0);
 
-GPIOD->BRR = (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
+GPIOC->OTYPER  &= ~(GPIO_OTYPER_OT0 | GPIO_OTYPER_OT1 |
+		  	  	  	  GPIO_OTYPER_OT2 | GPIO_OTYPER_OT3);
+
+// columns will be set without any pull down/up
+GPIOB->PUPDR   &= ~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1 |
+		  	  	  	  GPIO_PUPDR_PUPD2 | GPIO_PUPDR_PUPD3);
+// rows have the pull down/up resistors
+GPIOD->PUPDR   |= (GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1 |
+		  	  	  	  GPIO_PUPDR_PUPD2 | GPIO_PUPDR_PUPD3);
+
+GPIOC->OSPEEDR |=  ((3 << GPIO_OSPEEDR_OSPEED0_Pos) | (3 << GPIO_OSPEEDR_OSPEED1_Pos) |
+                      (3 << GPIO_OSPEEDR_OSPEED2_Pos) | (3 << GPIO_OSPEEDR_OSPEED3_Pos));
+
+// rows are the outputs and columns are inputs
+GPIOD->BSRR = (GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
 GPIOB->BRR = (GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7);
 }
 // -----------------------------------------------------------------------------
@@ -53,19 +67,18 @@ int Keypad_IsAnyKeyPressed(void) {
 // drive all COLUMNS HI; see if any ROWS are HI
 // return true if a key is pressed, false if not
 // currently no debounce here - just looking for a key twitch
-	//GPIOB -> ROW_PINS |= (GPIO_PIN_4);         	      /// set all ROWs HI
 
-	GPIOB -> BSRR = ROW_PINS;
+	GPIOB -> BSRR = ROW_PINS;			      /// set all ROWs HI
 
-// settle time is 20 "seconds"
-for (uint16_t idx=0; idx < 20 ; idx++ ) {  	// let it settle
+
+	for (uint16_t idx=0; idx < 3 ; idx++ ) {  	// let it settle! | settle time is 3 "seconds"
       ;
 	}
-if ((GPIOD->IDR & COL_PINS) != 0 ) {       // got a keypress!
-      return 1;						// return true if key is pressed
+if ((GPIOD->IDR & COL_PINS) != 0 ) {       		// got a keypress!
+      return 1;									// return true if key is pressed
    }
    else {
-      return 0;                          // nope.
+      return 0;                          		// nope.
    }
 }
 
@@ -82,7 +95,7 @@ int Keypad_WhichKeyIsPressed(void) {
    GPIOB->BSRR = ROW_PINS;                       	 // set all rows HI
    for ( iCol = 0; iCol < 4; iCol++ ) {      	 // check all COLUMNS
       if ( GPIOD->IDR & (GPIO_PIN_0 << iCol) ) {      	 // keypress in iCol!!
-    	  GPIOB->BRR = ( ROW_PINS );            	 // set all cols LO
+    	  GPIOB->BRR = ( ROW_PINS );    				// set all cols LO
          for ( iRow = 0; iRow < 4; iRow++ ) {   // 1 row at a time
         	 GPIOB->BSRR = ( GPIO_PIN_0 << (4+iRow) );     // set this row HI
             if ( GPIOD->IDR & (GPIO_PIN_0 << iCol) ) {    // keypress in iCol!!
@@ -90,32 +103,26 @@ int Keypad_WhichKeyIsPressed(void) {
                break;                                  // exit for iRow loop
             }
          }
+
          if ( bGotKey )
-        	Delay(100);									// set up debounce time!
+        	//Delay(100);									// set up debounce time!
             break;
+         }
       }
-   }
+
    //	encode {iRow,iCol} into LED word : row 1-3 : numeric, ‘1’-’9’
    //	                                   row 4   : ‘*’=10, ‘0’=15, ‘#’=12
    //                                    no press: send NO_KEYPRESS
    if ( bGotKey ) {
-      iKey = ( iRow * NUM_COLS ) + iCol + 1;  // handle numeric keys ...
-      if ( iKey == KEY_ZERO )                 //    works for ‘*’, ‘#’ too
-         iKey = CODE_ZERO;
-      else if (iKey == 1)
-    	 iKey = 1;
-      else if (iKey == 2)
-    	 iKey = 2;
-      else if (iKey == 3)
-    	 iKey = 3;
-      else if (iKey == 4)
-    	 iKey = 4;
-      else if (iKey == 5)
-
- 	return( iKey );
+      iKey = ( iRow * 4 ) + iCol + 1;  // handle numeric keys ...
+      if ( iKey == 4 ) {                //    works for ‘*’, ‘#’ too
+         GPIOC -> BSRR = iRow | ~(iCol << 16);
+      }
+ 	return GPIOC -> BSRR = iRow | ~(iCol << 16);
+   }		// nothing else -> read out the last iKey
     // turn on the LEDs?
 
-   } // return encoded keypress
-    return (-1);
+    // return encoded keypress
+    return -1;
    ///return( NO_KEYPRESS );                     // unable to verify keypress
 }
