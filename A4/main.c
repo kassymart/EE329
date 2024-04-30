@@ -8,6 +8,7 @@
 
 void SystemClock_Config(void);
 void TIM2_IRQHandler(void);
+void setup_MCO_CLK(void);
 
 int main(void)
 {
@@ -34,7 +35,6 @@ int main(void)
 
     GPIOE->OSPEEDR |=  (3 << GPIO_OSPEEDR_OSPEED0_Pos); //| (3 << GPIO_OSPEEDR_OSPEED1_Pos));
 
-    // GPIOE->BRR = (GPIO_PIN_0);  //| GPIO_PIN_1);
     void setup_TIM2(int iDutyCycle) {
 
        RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN;           // enable clock for TIM2
@@ -47,29 +47,39 @@ int main(void)
        TIM2->CR1 |= TIM_CR1_CEN;                       // start TIM2 CR1
     }
 
-	  int iDutyCycle = (25 * PERIOD)/100;
-    //int iDutyCycle =  PERIOD;
+	 int iDutyCycle = (50 * PERIOD)/100;			   // setting the duty cycle percent
      setup_TIM2(iDutyCycle);
 
 }
 
 void TIM2_IRQHandler(void) {
-	  // counter mode at pg 1005
-	// use a timer for the flag
    if (TIM2->SR & TIM_SR_CC1IF) {      // triggered by CCR1 event ...
       TIM2->SR &= ~(TIM_SR_CC1IF);     // manage the flag
-      GPIOE->ODR ^= GPIO_PIN_0;	     // toggle GPIO pin
-      if (TIM2->ARR > TIM2->CCR1) {
-    	  TIM2->SR &= ~(TIM_SR_CC1IF);
+      GPIOE->ODR ^= GPIO_PIN_0;	       // toggle GPIO pin
+      if (TIM2->ARR > TIM2->CCR1) {	   // when ARR is greater than CCR1
+    	  TIM2->SR &= ~(TIM_SR_CC1IF);	// clear CCR1
       }
    }
-   if (TIM2->SR & TIM_SR_UIF) {        // triggered by ARR event ... update occurs
+   if (TIM2->SR & TIM_SR_UIF) {        // triggered by ARR event ...
       TIM2->SR &= ~(TIM_SR_UIF);       // manage the flag
-      GPIOE->ODR ^= GPIO_PIN_0;		 // toggle GPIO pin
-      if (TIM2->ARR < TIM2->CCR1){
-      	TIM2->SR |= (TIM_SR_UIF);
+      GPIOE->ODR ^= GPIO_PIN_0;		   // toggle GPIO pin
+      if (TIM2->ARR < TIM2->CCR1){	   // when ARR is less than CCR
+      	TIM2->SR |= (TIM_SR_UIF);	   // set for CCR1
       }
    }
+}
+
+void setup_MCO_CLK(void) {
+   // Enable MCO, select MSI (4 MHz source)
+   RCC->CFGR = ((RCC->CFGR & ~(RCC_CFGR_MCOSEL)) | (RCC_CFGR_MCOSEL_0));
+   // Configure MCO output on PA8
+   RCC->AHB2ENR   |=  (RCC_AHB2ENR_GPIOAEN);
+   GPIOA->MODER   &= ~(GPIO_MODER_MODE8);    	// clear MODER bits
+   GPIOA->MODER   |=  (GPIO_MODER_MODE8_1);		// set alternate function mode
+   GPIOA->OTYPER  &= ~(GPIO_OTYPER_OT8);     	// Push-pull output
+   GPIOA->PUPDR   &= ~(GPIO_PUPDR_PUPD8);    	// no resistor
+   GPIOA->OSPEEDR |=  (GPIO_OSPEEDR_OSPEED8);   // high speed
+   GPIOA->AFR[1]  &= ~(GPIO_AFRH_AFSEL8);    	// select MCO function
 }
 
 void SystemClock_Config(void)
