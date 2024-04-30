@@ -46,8 +46,7 @@ int main(void)
        __enable_irq();                                 // global IRQ enable
        TIM2->CR1 |= TIM_CR1_CEN;                       // start TIM2 CR1
     }
-
-	 int iDutyCycle = (50 * PERIOD)/100;			   // setting the duty cycle percent
+     int iDutyCycle = (50 * PERIOD)/100;			   // setting the duty cycle percent
      setup_TIM2(iDutyCycle);
 
 }
