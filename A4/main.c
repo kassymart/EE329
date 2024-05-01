@@ -19,7 +19,6 @@ int main(void)
   SystemClock_Config();
   // Keypad_Init();
   // Lcd_Init();
-
   // Configure GPIO pin PE2
     RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOEEN);
     // PE0 -> trigger the interrupt event
