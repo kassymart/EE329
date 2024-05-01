@@ -1,13 +1,16 @@
-
 #include "main.h"
 //#include "keypad.h"
 //#include "lcd.h"
 #include "ctype.h"
-#define PERIOD 800
+#define PERIOD 0xFFFFFFFF
+//#define DUTY 1
+#define NEW_PERIOD 400
+
 
 
 void SystemClock_Config(void);
 void TIM2_IRQHandler(void);
+void setup_TIM2(int iDutyCycle);
 void setup_MCO_CLK(void);
 
 int main(void)
@@ -20,52 +23,54 @@ int main(void)
   // Configure GPIO pin PE2
     RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOEEN);
     // PE0 -> trigger the interrupt event
-    GPIOE->MODER &= ~(GPIO_MODER_MODE0); // Clear bits
+    GPIOE->MODER &= ~(GPIO_MODER_MODE0) ; // Clear bits
     GPIOE->MODER |= (GPIO_MODER_MODE0_0);
     // PE2 -> trigger the ARR event
     GPIOE->MODER &= ~(GPIO_MODER_MODE2); // Clear bits
-    GPIOE->MODER |= (GPIO_MODER_MODE2_1);	// enabling interrupts
+    GPIOE->MODER |= (GPIO_MODER_MODE2_0);	// enabling interrupts
 
     // Set PE2 -> for Channel 1 to view CCR1 events
-    GPIOE->AFR[0] |= (1 << GPIO_AFRL_AFSEL2_Pos);
+   // GPIOE->AFR[0] |= (1 << GPIO_AFRL_AFSEL2_Pos);
 
-    GPIOE->OTYPER  &= ~(GPIO_OTYPER_OT0); //| GPIO_OTYPER_OT1);
+    GPIOE->OTYPER  &= ~(GPIO_OTYPER_OT0 | GPIO_OTYPER_OT2);
 
-    GPIOE->PUPDR   &= ~(GPIO_PUPDR_PUPD0); // | GPIO_PUPDR_PUPD1);
+    GPIOE->PUPDR   &= ~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD2);
 
-    GPIOE->OSPEEDR |=  (3 << GPIO_OSPEEDR_OSPEED0_Pos); //| (3 << GPIO_OSPEEDR_OSPEED1_Pos));
+    GPIOE->OSPEEDR |=  (3 << GPIO_OSPEEDR_OSPEED0_Pos | (3 << GPIO_OSPEEDR_OSPEED2_Pos));
 
-    void setup_TIM2(int iDutyCycle) {
 
-       RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN;           // enable clock for TIM2
-       TIM2->DIER |= (TIM_DIER_CC1IE | TIM_DIER_UIE);  // enable event gen, rcv CCR1
-       TIM2->ARR = PERIOD;                             // ARR = T = counts @4MHz
-       TIM2->CCR1 = iDutyCycle;                        // ticks for duty cycle
-       TIM2->SR &= ~(TIM_SR_CC1IF | TIM_SR_UIF);       // clr IRQ flag in status reg
-       NVIC->ISER[0] |= (1 << (TIM2_IRQn & 0x1F));     // set NVIC interrupt: 0x1F
-       __enable_irq();                                 // global IRQ enable
-       TIM2->CR1 |= TIM_CR1_CEN;                       // start TIM2 CR1
-    }
-     int iDutyCycle = (50 * PERIOD)/100;			   // setting the duty cycle percent
-     setup_TIM2(iDutyCycle);
+    int iDutyCycle = (50 * PERIOD)/100;			   // setting the duty cycle percent
+    setup_TIM2(iDutyCycle);
+
 
 }
+void setup_TIM2(int iDutyCycle) {
 
-void TIM2_IRQHandler(void) {
-   if (TIM2->SR & TIM_SR_CC1IF) {      // triggered by CCR1 event ...
-      TIM2->SR &= ~(TIM_SR_CC1IF);     // manage the flag
-      GPIOE->ODR ^= GPIO_PIN_0;	       // toggle GPIO pin
-      if (TIM2->ARR > TIM2->CCR1) {	   // when ARR is greater than CCR1
-    	  TIM2->SR &= ~(TIM_SR_CC1IF);	// clear CCR1
-      }
-   }
-   if (TIM2->SR & TIM_SR_UIF) {        // triggered by ARR event ...
-      TIM2->SR &= ~(TIM_SR_UIF);       // manage the flag
-      GPIOE->ODR ^= GPIO_PIN_0;		   // toggle GPIO pin
-      if (TIM2->ARR < TIM2->CCR1){	   // when ARR is less than CCR
-      	TIM2->SR |= (TIM_SR_UIF);	   // set for CCR1
-      }
-   }
+   RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN;           // enable clock for TIM2
+   TIM2->DIER |= (TIM_DIER_CC1IE | TIM_DIER_UIE);  // enable event gen, rcv CCR1
+   TIM2->ARR = PERIOD;                             // ARR = T = counts @4MHz
+   TIM2->CCR1 = iDutyCycle;                        // ticks for duty cycle
+   TIM2->SR &= ~(TIM_SR_CC1IF | TIM_SR_UIF);       // clr IRQ flag in status reg
+   NVIC->ISER[0] |= (1 << (TIM2_IRQn & 0x1F));     // set NVIC interrupt: 0x1F
+   __enable_irq();                                 // global IRQ enable
+   TIM2->CR1 |= TIM_CR1_CEN;                       // start TIM2 CR1
+}
+
+void TIM2_IRQHandler(void)
+{
+	GPIOE ->ODR |= (GPIO_PIN_2);
+    if (TIM2->SR & TIM_SR_CC1IF) // Triggered by CCR1 event
+    {
+        TIM2->SR &= ~TIM_SR_CC1IF; // Clear the interrupt flag
+        GPIOE->ODR ^= GPIO_PIN_0; // Toggle GPIO pin PE0 and PE2
+        TIM2->CCR1 = ((TIM2->CCR1) + NEW_PERIOD);
+
+    }
+
+    if (TIM2->SR & TIM_SR_UIF) {        // triggered by ARR event ... update occurs
+          TIM2->SR &= ~(TIM_SR_UIF);       // manage the flag
+    }
+    GPIOE->ODR &= ~(GPIO_PIN_2);		 // toggle GPIO pin
 }
 
 void setup_MCO_CLK(void) {
@@ -74,7 +79,7 @@ void setup_MCO_CLK(void) {
    // Configure MCO output on PA8
    RCC->AHB2ENR   |=  (RCC_AHB2ENR_GPIOAEN);
    GPIOA->MODER   &= ~(GPIO_MODER_MODE8);    	// clear MODER bits
-   GPIOA->MODER   |=  (GPIO_MODER_MODE8_1);		// set alternate function mode
+   GPIOA->MODER   |=  (GPIO_MODER_MODE8_1);	// set alternate function mode
    GPIOA->OTYPER  &= ~(GPIO_OTYPER_OT8);     	// Push-pull output
    GPIOA->PUPDR   &= ~(GPIO_PUPDR_PUPD8);    	// no resistor
    GPIOA->OSPEEDR |=  (GPIO_OSPEEDR_OSPEED8);   // high speed
