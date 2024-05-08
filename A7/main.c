@@ -18,56 +18,97 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdio.h>
 
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void LPUART1_IRQHandler(void);
-void LPUART_init(void);
-void LPUART_Print(const char*message);
+void LPUART_Print();
+void LPUART_Esc();
+void LPUART1_IRQHandler();
+void delay_us(const uint32_t time_us);
+void splash_screen(void);
+void update_position(void);
+void pop_bubbles();
 
+int row = 20;
+int col = 40;
 
 int main(void)
 {
+  const int baud_divisor = 0x115C; // calculated LPUARTDIV, clock is 2 MHz
 
   HAL_Init();
   SystemClock_Config();
-  LPUART_init();
+
+  PWR->CR2 |= (PWR_CR2_IOSV);              // power avail on PG[15:2] (LPUART1)
+  RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOGEN);   // enable GPIOG clock
+  RCC->APB1ENR2 |= RCC_APB1ENR2_LPUART1EN; // enable LPUART clock bridge
+
+  /* USER: configure GPIOG registers MODER/PUPDR/OTYPER/OSPEEDR then
+     select AF mode and specify which function with AFR[0] and AFR[1] */
+  GPIOG->AFR[0] &= ~(GPIO_AFRL_AFSEL7);
+  GPIOG->AFR[0] |= (GPIO_AFRL_AFSEL7_3); // configure PG7 (TX)
+
+  GPIOG->AFR[1] &= ~(GPIO_AFRH_AFSEL8);
+  GPIOG->AFR[1] |= (GPIO_AFRH_AFSEL8_3); // configure PG8 (RX)
+
+  GPIOG->OTYPER &= ~(GPIO_OTYPER_OT7); // TX push-pull
+
+  GPIOG->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED7_Pos)
+                   | (3 << GPIO_OSPEEDR_OSPEED8_Pos)); //highest speed
+
+  GPIOG->PUPDR |= (GPIO_PUPDR_PUPD8_1); //no pull up/pull down
+
+  GPIOG->MODER &= ~(GPIO_MODER_MODE7 | GPIO_MODER_MODE8);
+  GPIOG->MODER |= (GPIO_MODER_MODE7_1 | GPIO_MODER_MODE8_1);
+
+  LPUART1->CR1 &= ~(USART_CR1_M1 | USART_CR1_M0); // 8-bit data
+  LPUART1->CR1 |= USART_CR1_UE;                   // enable LPUART1
+  LPUART1->CR1 |= (USART_CR1_TE | USART_CR1_RE);  // enable xmit & recv
+  LPUART1->CR1 |= USART_CR1_RXNEIE;        // enable LPUART1 recv interrupt
+  LPUART1->ISR &= ~(USART_ISR_RXNE);       // clear Recv-Not-Empty flag
+
+  /* USER: set baud rate register (LPUART1->BRR) */
+  LPUART1->BRR = baud_divisor;
+
+  NVIC->ISER[2] = (1 << (LPUART1_IRQn & 0x1F));   // enable LPUART1 ISR
+  __enable_irq();                          // enable global interrupts
+  	  LPUART_Esc("2J");
+  	  LPUART_Esc("H");
+  	  LPUART_Esc("0J");
+  	  LPUART_Esc("3B");
+  	  LPUART_Esc("5C");
+  	  LPUART_Print("All good students read the");
+  	  LPUART_Esc("1B");
+  	  LPUART_Esc("21D");
+  	  LPUART_Esc("5m");
+  	  LPUART_Print("reference manual");
+  	  LPUART_Esc("H");
+  	  LPUART_Esc("0m");
+  	  LPUART_Print("Input:");
+
+  	LPUART_Esc("2J");
+	splash_screen();
+	delay_us(2000000);
+	LPUART_Esc("0m");    // remove attributes
+	update_position();
+
 
   while (1)
   {
-	  const char message = 'R';
-	  LPUART_Print(message);
+
   }
 }
-// BRR -> baud rate register (not the bit reset register)
-void LPUART_init(void){
-	PWR->CR2 |= (PWR_CR2_IOSV);              // power avail on PG[15:2] (LPUART1)
-	RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOGEN);   // enable GPIOG clock
-	RCC->APB1ENR2 |= RCC_APB1ENR2_LPUART1EN; // enable LPUART clock bridge
-	/* USER: configure GPIOG registers MODER/PUPDR/OTYPER/OSPEEDR then
-	   select AF mode and specify which function with AFR[0] and AFR[1] */
-	//GPIOG->AFR[0] &= ~(GPIO_AFRL_AFSEL0(0xF << GPIO_AFRL_AFSEL0_Pos)) ;
-	GPIOG->AFR[0] |= (1 << GPIO_AFRL_AFSEL0_Pos) | (1 << (GPIO_AFRL_AFSEL1_Pos)) ;
-//	GPIOG->AFR[1] &= ~(GPIO_AFRL_AFSEL0(0x1 << GPIO_AFRL_AFSEL0_Pos)) ;
-	//GPIOG->AFR[1] |= (1 << (GPIO_AFRL_AFSEL1_Pos & 0x1F)) ;
-    GPIOG->OTYPER &= ~(GPIO_OTYPER_OT0 | GPIO_OTYPER_OT1);
-    GPIOG->PUPDR &= ~(GPIO_PUPDR_PUPD0 | GPIO_PUPDR_PUPD1);
-    GPIOG->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED0_Pos) | (3 << GPIO_OSPEEDR_OSPEED0_Pos));
-    GPIOG->BRR = (GPIO_PIN_0 | GPIO_PIN_1);
-	LPUART1->CR1 &= ~(USART_CR1_M1 | USART_CR1_M0); // 8-bit data
-    GPIOG->MODER &= ~(GPIO_MODER_MODE0 | GPIO_MODER_MODE1);
-    GPIOG->MODER |= (GPIO_MODER_MODE0_0 | GPIO_MODER_MODE1_0);
-	LPUART1->CR1 |= USART_CR1_UE;                   // enable LPUART1
-	LPUART1->CR1 |= (USART_CR1_TE | USART_CR1_RE);  // enable xmit & recv
-	LPUART1->CR1 |= USART_CR1_RXNEIE;        // enable LPUART1 recv interrupt
-	LPUART1->ISR &= ~(USART_ISR_RXNE);       // clear Recv-Not-Empty flag
-	/* USER: set baud rate register (LPUART1->BRR) */
-	LPUART1->BRR |= (0x22B9);				// initialize the baud rate from calc
-	NVIC->ISER[2] = (1 << (LPUART1_IRQn & 0x1F));   // enable LPUART1 ISR
-	__enable_irq();                          // enable global interrupts
+
+void delay_us(const uint32_t time_us) {
+	// set the counts for the specified delay
+	SysTick->LOAD = (uint32_t)((time_us * (SystemCoreClock / 1000000)) - 1);
+	SysTick->VAL = 0;                                  	 // clear timer count
+	SysTick->CTRL &= ~(SysTick_CTRL_COUNTFLAG_Msk);    	 // clear count flag
+	while (!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk)); // wait for flag
 }
 
-void LPUART_Print(const char*message) {
+
+void LPUART_Print(const char* message ) {
    uint16_t iStrIdx = 0;
    while ( message[iStrIdx] != 0 ) {
       while(!(LPUART1->ISR & USART_ISR_TXE)) // wait for empty xmit buffer
@@ -77,28 +118,111 @@ void LPUART_Print(const char*message) {
    }
 }
 
+void LPUART_Esc(const char* code) {
+	LPUART_Print("\x1B["); //Escape code heading
+	LPUART_Print(code); //escape code value
+}
+
+// referenced from James Savella | 'S23 EE329 Student
+void update_position(){
+	LPUART_Esc("2J");	//clear all
+	LPUART_Esc("1m");	// make the char bolder
+
+	char str[8];
+	sprintf(str, "%d;%dH",  row, col);	//able to see the char move
+	LPUART_Esc(str);
+	LPUART_Print("X");
+}
+
+void splash_screen(void) {
+
+	__disable_irq();			//disables input
+
+	LPUART_Esc("11;30H"); //center
+	LPUART_Esc("32m");	//blinking mode (sometimes it blinks)
+	LPUART_Print("The Adventures of X");		//Blink Penvene's plaything
+	LPUART_Esc("34m");
+
+	//Heart
+	//pop_bubbles();
+	LPUART_Esc("18;40H");	//line:column
+	LPUART_Print("*");
+	LPUART_Esc("17;39H");
+	LPUART_Print("* *");
+	LPUART_Esc("16;38H");
+	LPUART_Print("*   *");
+	LPUART_Esc("15;37H");
+	LPUART_Print("*     *");
+	LPUART_Esc("14;36H");
+	LPUART_Print("*   *   *");
+	LPUART_Esc("13;36H");
+	LPUART_Print("* *   * *");
+
+	__enable_irq();                          // enable global interrupts
+}
+
+
+//void pop_bubbles(){
+//	LPUART_Esc("37m");
+//	LPUART_Esc("18;40H");	//line:column
+//	LPUART_Print("*");
+//	LPUART_Esc("32m");
+//
+//}
 void LPUART1_IRQHandler(void) {
    uint8_t charRecv;
    if (LPUART1->ISR & USART_ISR_RXNE) {
       charRecv = LPUART1->RDR;
       switch ( charRecv ) {
-	   case 'R':
-		   if (LPUART1->RDR == 0x52) {
-			   LPUART1->CR1 = charRecv;
-		   }
-            /* USER: process R to ESCape code back to terminal */
-		 //   else
+	     case 'R':
+            //for colors, format is '3xm' (1<x<7)
+		    LPUART_Esc("31m");//x=1 is red
+	        break;
 
-	      break;
-         /* USER : handle other ESCape code cases */
+	     case 'G':
+	        LPUART_Esc("32m"); //x=2 is green
+	     	break;
+
+	     case 'B':
+	    	LPUART_Esc("34m"); //x=4 is blue
+	    	break;
+
+	     case 'W':
+		 	LPUART_Esc("37m"); //x=7 is white
+	     	break;
+
+	     case 'w':
+	    	row -= 1;
+	    	if (row > 40){
+	    		row = 1;
+	    	}
+	    	break;
+	     case 'a':
+	    	 col -= 1;
+		     if (col < 1){
+			    col = 80;
+			 }
+			 break;
+	     case 's':
+	    	 row += 1;
+	    	  if (row > 40){
+	    		row = 1;
+	    	  }
+	    	 break;
+	     case 'd':
+	    	 col += 1;
+	    	if (col > 80){
+	           col = 1;
+	    	}
+	    	 break;
 	   default:
-	      while( !(LPUART1->ISR & 0) )
+	      while( !(LPUART1->ISR & USART_ISR_TXE) )
                ;    // wait for empty TX buffer
 		LPUART1->TDR = charRecv;  // echo char to terminal
 	}  // end switch
    }
+   update_position();
 }
-
 
 /**
   * @brief System Clock Configuration
@@ -135,7 +259,7 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
@@ -144,14 +268,7 @@ void SystemClock_Config(void)
   }
 }
 
-/* USER CODE BEGIN 4 */
 
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
