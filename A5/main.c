@@ -1,11 +1,6 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
+*
   * Copyright (c) 2024 STMicroelectronics.
   * All rights reserved.
   *
@@ -20,10 +15,11 @@
 #include "main.h"
 
 void SystemClock_Config(void);
+void SysTick_Init(void);
 void SPI_init(void);
 void DAC_init(void);
 uint16_t DAC_volt_conv(uint16_t voltage);
-void DAC_write(uint32_t volt_code);
+void DAC_write(uint16_t volt_code);
 void delay_us(const uint32_t time_us);
 
 
@@ -31,6 +27,7 @@ int main(void)
 {
 
   HAL_Init();
+  SysTick_Init();
   SystemClock_Config();
   DAC_init();
  // SPI_init();
@@ -38,12 +35,12 @@ int main(void)
 
   while (1)
   {
-	uint16_t volt_1 = 1000;
-	uint16_t volt_2 = 2000;
+	uint16_t volt_1 = 4;
+	uint16_t volt_2 = 3;
     DAC_write(DAC_volt_conv(volt_1));
-    delay_us(75);
+  //  delay_us(75);
     DAC_write(DAC_volt_conv(volt_2));
-    delay_us(225);
+ //  delay_us(225);
   }
   /* USER CODE END 3 */
 }
@@ -59,7 +56,6 @@ void SPI_init(void) {
    // build control registers CR1 & CR2 for SPI control of peripheral DAC
    // assumes no active SPI xmits & no recv data in process (BSY=0)
    // CR1 (reset value = 0x0000)
-   DAC_init();
    SPI1->CR1 &= ~( SPI_CR1_SPE );             	// disable SPI for config
    SPI1->CR1 &= ~( SPI_CR1_RXONLY );          	// recv-only OFF
    SPI1->CR1 &= ~( SPI_CR1_LSBFIRST );        	// data bit order MSb:LSb
@@ -83,50 +79,38 @@ void DAC_init(void) {
 		// configure AFR for SPI1 function (1 of 3 SPI bits shown here)
 		GPIOA->AFR[0] &= ~((0x000F << (GPIO_AFRL_AFSEL7_Pos)) |(0x000F << (GPIO_AFRL_AFSEL5_Pos)) |(0x000F << (GPIO_AFRL_AFSEL4_Pos))); // clear nibble for bit 7 AF
 		GPIOA->AFR[0] |=  ((0x0005 << (GPIO_AFRL_AFSEL7_Pos)) |(0x0005 << (GPIO_AFRL_AFSEL5_Pos)) | (0x0005 << (GPIO_AFRL_AFSEL4_Pos))); // set b7 AF to SPI1 (fcn 5)
-	    GPIOA->MODER &= ~(GPIO_MODER_MODE4 | GPIO_MODER_MODE5 |GPIO_MODER_MODE7);
-	    GPIOA->MODER |= (GPIO_MODER_MODE4_1 | GPIO_MODER_MODE5_1 | GPIO_MODER_MODE7_1);
 	    GPIOA->OTYPER &= ~(GPIO_OTYPER_OT4 |GPIO_OTYPER_OT5 | GPIO_OTYPER_OT7);
 	    GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPD4 | GPIO_PUPDR_PUPD5  | GPIO_PUPDR_PUPD7);
 	    GPIOA->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED4_Pos) | (3 << GPIO_OSPEEDR_OSPEED5_Pos) | (3 << GPIO_OSPEEDR_OSPEED7_Pos));
+	    GPIOA->MODER &= ~(GPIO_MODER_MODE4 | GPIO_MODER_MODE5 |GPIO_MODER_MODE7);
+	    GPIOA->MODER |= (GPIO_MODER_MODE4_1 | GPIO_MODER_MODE5_1 | GPIO_MODER_MODE7_1);
+	    SPI_init();
 }
 
 
 
 uint16_t DAC_volt_conv(uint16_t voltage) {
-	uint16_t Vref = 3300;
-//	uint16_t control = (0x03 << 12);
-//	uint16_t Vout = (Vref * voltage * 1000) / (4095);
-//	return (control | Vout);
+	uint16_t control = (0x3 << 12);			// access control bits from the bit 9 to bit 0
+	uint16_t Vout = (4095 * voltage * 1000 / 3300);
+	return (control | Vout);
 
-	  if (voltage > Vref) {
-	    voltage = Vref;
-	  }
+}
 
-	  // convert to digital value
-	  uint32_t Vout = (voltage * 4095 * 0.805) / Vref;
-	  return (Vout - 6);
+
+void DAC_write(uint16_t volt_code)
+{
+	while(!(SPI1->SR & SPI_SR_TXE));		// ensure room in TXFIFO before writing
+	SPI1->DR = volt_code;
+	while(!(SPI1->SR & SPI_SR_RXNE));					// clear RX FIFO
 }
 
 
-
-void DAC_write(uint32_t volt_code) {
-	//uint16_t check;
-	while (!(SPI1->SR & SPI_SR_TXE)){
-
-	}
-	SPI1->DR = volt_code + 0x1000;
-	//if (SPI1->SR & SPI_SR_RXNE){
-	//	check = SPI1->DR;
-	// }
-
+void SysTick_Init(void) {
+	SysTick->CTRL |= (SysTick_CTRL_ENABLE_Msk |     	// enable SysTick Timer
+                      SysTick_CTRL_CLKSOURCE_Msk); 	// select CPU clock
+	SysTick->CTRL &= ~(SysTick_CTRL_TICKINT_Msk);  	// disable interrupt
 }
-	// ignore the first 4 MSB
-	// read out the 12 bits
-//	SPI1->CR2 &= ~(SPI_CR2_NSSP);	// setting the CS pin low
-//	SPI1->DR |= (SPI_CR2_DS); 		// set data in the data register
-	//if ()
 
-//}
 
 void delay_us(const uint32_t time_us) {
 	// set the counts for the specified delay
