@@ -90,9 +90,9 @@ void DAC_init(void) {
 
 
 uint16_t DAC_volt_conv(uint16_t voltage) {
-	uint16_t control = (0x3 << 12);			// access control bits from the bit 9 to bit 0
+	// uint16_t control = (0x3 << 12);			// access control bits from the bit 9 to bit 0
 	uint16_t Vout = (4095 * voltage * 1000 / 3300);
-	return (control | Vout);
+	return  Vout;
 
 }
 
