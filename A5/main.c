@@ -13,15 +13,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdint.h>
+#include <ctype.h>
+#include "dac.h"
+#include "delay.h"
+#include "keypad.h"
+
+
 
 void SystemClock_Config(void);
-void SysTick_Init(void);
-void SPI_init(void);
-void DAC_init(void);
-uint16_t DAC_volt_conv(uint16_t voltage);
-void DAC_write(uint16_t volt_code);
-void delay_us(const uint32_t time_us);
-
 
 int main(void)
 {
@@ -29,97 +29,65 @@ int main(void)
   HAL_Init();
   SysTick_Init();
   SystemClock_Config();
+  Keypad_Init();
   DAC_init();
- // SPI_init();
 
+  uint8_t state = 0;
+  uint32_t current_input = 0;
+  uint32_t last_input = '\0';
 
   while (1)
   {
-	uint16_t volt_1 = 4;
-	uint16_t volt_2 = 3;
-    DAC_write(DAC_volt_conv(volt_1));
-  //  delay_us(75);
-    DAC_write(DAC_volt_conv(volt_2));
- //  delay_us(225);
+	current_input = Keypad_Read();
+	if (last_input != current_input){
+		if (current_input == '*'){
+			state = 0;
+		}
+	}
+
+
+//  switch(state){
+//  case 0:
+//	  // resets the voltage code
+//	  DAC_write(0);
+//	  current_input = 0;
+//	  delay_us(40000);
+//		if (last_input != current_input){
+//			if (current_input == '*'){
+//				state++;
+//				break;
+//			}
+//		}
+//
+//  case 1:
+//	  if (isdigit(current_input) && (current_input != '\0')){
+//		  if (current_input > 330){
+//			  current_input = '330';
+//			  uint32_t max_digital = DAC_volt_conv(current_input);
+// 			  DAC_write(max_digital);
+//			  current_input = 0;
+//			  // current_input = '330';
+//		  }
+//		  else {
+//			  uint32_t digital = DAC_volt_conv(current_input);
+//			  DAC_write(digital);
+//			  current_input = 0;
+//			  break;
+//		  }
+//	  }
+//	  break;
+//   }
+	switch(state) {
+	case 0:
+
+	}
   }
-  /* USER CODE END 3 */
 }
 
 /**
   * @brief System Clock Configuration
   * @retval None
   */
-
-void SPI_init(void) {
-   // SPI config as specified @ STM32L4 RM0351 rev.9 p.1459
-   // called by or with DAC_init()
-   // build control registers CR1 & CR2 for SPI control of peripheral DAC
-   // assumes no active SPI xmits & no recv data in process (BSY=0)
-   // CR1 (reset value = 0x0000)
-   SPI1->CR1 &= ~( SPI_CR1_SPE );             	// disable SPI for config
-   SPI1->CR1 &= ~( SPI_CR1_RXONLY );          	// recv-only OFF
-   SPI1->CR1 &= ~( SPI_CR1_LSBFIRST );        	// data bit order MSb:LSb
-   SPI1->CR1 &= ~( SPI_CR1_CPOL | SPI_CR1_CPHA ); // SCLK polarity:phase = 0:0
-   SPI1->CR1 |=	 SPI_CR1_MSTR;              	// MCU is SPI controller
-   // CR2 (reset value = 0x0700 : 8b data)
-   SPI1->CR2 &= ~( SPI_CR2_TXEIE | SPI_CR2_RXNEIE ); // disable FIFO intrpts
-   SPI1->CR2 &= ~( SPI_CR2_FRF);              	// Moto frame format
-   SPI1->CR2 |=	 SPI_CR2_NSSP;              	// auto-generate NSS pulse
-   SPI1->CR2 |=	 SPI_CR2_DS;                	// 16-bit data
-   SPI1->CR2 |=	 SPI_CR2_SSOE;              	// enable SS output
-   // CR1
-   SPI1->CR1 |=	 SPI_CR1_SPE;               	// re-enable SPI for ops
-}
-
-void DAC_init(void) {
-	// enable clock for GPIOA & SPI1
-		RCC->AHB2ENR |= (RCC_AHB2ENR_GPIOAEN);                // GPIOA: DAC NSS/SCK/SDO
-		RCC->APB2ENR |= (RCC_APB2ENR_SPI1EN);                 // SPI1 port
-		/* USER ADD GPIO configuration of MODER/PUPDR/OTYPER/OSPEEDR registers HERE */
-		// configure AFR for SPI1 function (1 of 3 SPI bits shown here)
-		GPIOA->AFR[0] &= ~((0x000F << (GPIO_AFRL_AFSEL7_Pos)) |(0x000F << (GPIO_AFRL_AFSEL5_Pos)) |(0x000F << (GPIO_AFRL_AFSEL4_Pos))); // clear nibble for bit 7 AF
-		GPIOA->AFR[0] |=  ((0x0005 << (GPIO_AFRL_AFSEL7_Pos)) |(0x0005 << (GPIO_AFRL_AFSEL5_Pos)) | (0x0005 << (GPIO_AFRL_AFSEL4_Pos))); // set b7 AF to SPI1 (fcn 5)
-	    GPIOA->OTYPER &= ~(GPIO_OTYPER_OT4 |GPIO_OTYPER_OT5 | GPIO_OTYPER_OT7);
-	    GPIOA->PUPDR &= ~(GPIO_PUPDR_PUPD4 | GPIO_PUPDR_PUPD5  | GPIO_PUPDR_PUPD7);
-	    GPIOA->OSPEEDR |= ((3 << GPIO_OSPEEDR_OSPEED4_Pos) | (3 << GPIO_OSPEEDR_OSPEED5_Pos) | (3 << GPIO_OSPEEDR_OSPEED7_Pos));
-	    GPIOA->MODER &= ~(GPIO_MODER_MODE4 | GPIO_MODER_MODE5 |GPIO_MODER_MODE7);
-	    GPIOA->MODER |= (GPIO_MODER_MODE4_1 | GPIO_MODER_MODE5_1 | GPIO_MODER_MODE7_1);
-	    SPI_init();
-}
-
-
-
-uint16_t DAC_volt_conv(uint16_t voltage) {
-	// uint16_t control = (0x3 << 12);			// access control bits from the bit 9 to bit 0
-	uint16_t Vout = (4095 * voltage * 1000 / 3300);
-	return  Vout;
-
-}
-
-
-void DAC_write(uint16_t volt_code)
-{
-	while(!(SPI1->SR & SPI_SR_TXE));		// ensure room in TXFIFO before writing
-	SPI1->DR = volt_code;
-	while(!(SPI1->SR & SPI_SR_RXNE));					// clear RX FIFO
-}
-
-
-void SysTick_Init(void) {
-	SysTick->CTRL |= (SysTick_CTRL_ENABLE_Msk |     	// enable SysTick Timer
-                      SysTick_CTRL_CLKSOURCE_Msk); 	// select CPU clock
-	SysTick->CTRL &= ~(SysTick_CTRL_TICKINT_Msk);  	// disable interrupt
-}
-
-
-void delay_us(const uint32_t time_us) {
-	// set the counts for the specified delay
-	SysTick->LOAD = (uint32_t)((time_us * (SystemCoreClock / 1000000)) - 1);
-	SysTick->VAL = 0;                                  	 // clear timer count
-	SysTick->CTRL &= ~(SysTick_CTRL_COUNTFLAG_Msk);    	 // clear count flag
-	while (!(SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk)); // wait for flag
-}
-
 
 void SystemClock_Config(void)
 {
